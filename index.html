@@ -3,144 +3,41 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Parkinson's Disease - Finger Tapping Test</title>
-  <meta name="description" content="Finger-tapping test to assess for rapid alternating movement tasks.">
+  <title>Weber's notes in Internal Medicine</title>
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <main class="shell" id="appShell">
-    <section class="hero card" id="heroCard">
-      <h1>Parkinson's Disease - Finger Tapping Test</h1>
-      <p class="lead">Finger-tapping test to assess for rapid alternating movement tasks. This task tests your rapid alternating finger movements between your left, right and both hands. Results will be sent back to the treating team.</p>
-
-      <section class="instructions-card embedded-instructions">
-        <h2>Instructions</h2>
-        <ul id="instructionList">
-          <li>Sit comfortably with the keyboard directly in front of you.</li>
-          <li>Before each stage, read the on-screen instruction and watch the short key animation.</li>
-          <li>When the countdown reaches zero, alternate only the two shown keys as quickly as possible.</li>
-          <li>Do not repeatedly strike the same key — alternation errors are counted.</li>
-          <li>Complete all three stages to generate the final report.</li>
-        </ul>
-      </section>
-
-      <section class="setup-box">
-        <div class="section-head">
-          <h2>Participant details</h2>
-          <p class="muted">Complete this before starting the assessment.</p>
+  <div class="landing-shell premium-landing">
+    <section class="hero-card landing-hero">
+      <div class="landing-copy">
+        <p class="eyebrow">Private clinical knowledge base</p>
+        <h1>Weber's notes in Internal Medicine</h1>
+        <p class="lead">A refined portal into Weber's IM Notes vault — built for browsing, search, and quick access to a very large internal medicine knowledge base.</p>
+        <div class="landing-pills">
+          <span>Internal Medicine</span>
+          <span>Critical Care</span>
+          <span>ECG Cases</span>
+          <span>Guidelines</span>
         </div>
-        <form id="participantForm" class="participant-form">
-          <label>
-            <span>First Name</span>
-            <input id="firstName" name="firstName" type="text" required>
-          </label>
-          <label>
-            <span>Last Name</span>
-            <input id="lastName" name="lastName" type="text" required>
-          </label>
-          <label>
-            <span>Date of Birth</span>
-            <input id="dob" name="dob" type="date" required>
-          </label>
-          <label>
-            <span>Stage duration</span>
-            <select id="stageDuration" name="stageDuration" required>
-              <option value="10">10 seconds</option>
-              <option value="15">15 seconds</option>
-              <option value="20">20 seconds</option>
-              <option value="60">60 seconds — BRAIN TEST</option>
-            </select>
-          </label>
-          <div class="actions full-span">
-            <button id="beginSetupBtn" class="button primary" type="button">Continue to test</button>
-            <button id="resetBtn" class="button" type="button">Reset</button>
-          </div>
+      </div>
+      <div class="gate-card premium-gate">
+        <p class="eyebrow">Secure entry</p>
+        <h2>Enter the note browser</h2>
+        <p class="tag">Client-side password gate. Convenient, not truly secure.</p>
+        <form id="gate-form" class="gate-form">
+          <input id="gate-password" class="search-input" type="password" placeholder="Enter password" autocomplete="current-password">
+          <button class="button" type="submit">Open site</button>
         </form>
-      </section>
-    </section>
-
-    <section id="preStageCard" class="card pre-stage-card hidden">
-      <div class="prestage-inner">
-        <p class="eyebrow center">Upcoming stage</p>
-        <h2 id="preStageTitle" class="center">Get ready</h2>
-        <p id="preStageDescription" class="muted center prestage-description"></p>
-        <div class="countdown-center">
-          <div id="countdownValue" class="countdown-big">5</div>
-          <div class="muted countdown-note">seconds until start</div>
-        </div>
-        <div class="animation-panel">
-          <div class="hand-block">
-            <span class="hand-label" id="leftHandLabel">Left hand</span>
-            <div class="key-animation" id="leftHandKeys"></div>
-          </div>
-          <div class="hand-block">
-            <span class="hand-label" id="rightHandLabel">Right hand</span>
-            <div class="key-animation" id="rightHandKeys"></div>
-          </div>
+        <div class="gate-footer">
+          <p class="meta">Hint: Ask Weber for the password</p>
+          <p id="gate-error" class="error hidden">Wrong password.</p>
         </div>
       </div>
     </section>
-
-    <section class="card status-card hidden" id="testCard">
-      <div class="status-head">
-        <div>
-          <p class="eyebrow">Current stage</p>
-          <h2 id="stageTitle">Ready</h2>
-          <p id="stageDescription" class="muted">Complete participant details to begin.</p>
-        </div>
-        <div class="timer-wrap">
-          <div id="timer" class="timer">10.0</div>
-          <div id="phaseMessage" class="muted">Waiting to begin</div>
-        </div>
-      </div>
-      <div class="key-guide">
-        <div class="key-pill"><span>Expected key</span><strong id="expectedKey">—</strong></div>
-        <div class="key-pill"><span>Last key</span><strong id="lastKey">—</strong></div>
-        <div class="key-pill"><span>Total taps</span><strong id="tapCount">0</strong></div>
-        <div class="key-pill"><span>Total errors</span><strong id="errorCount">0</strong></div>
-      </div>
-      <div class="progress"><div id="progressBar"></div></div>
-    </section>
-
-    <section class="card live-card hidden" id="liveCard">
-      <div class="section-head">
-        <h2>Live stage graphs</h2>
-        <p class="muted">These update while you tap.</p>
-      </div>
-      <div class="chart-grid">
-        <div class="chart-card">
-          <h3>Speed (taps/s)</h3>
-          <canvas id="liveSpeedChart" width="900" height="320"></canvas>
-        </div>
-        <div class="chart-card">
-          <h3>Variability (std dev of recent inter-tap intervals, ms)</h3>
-          <canvas id="liveVariabilityChart" width="900" height="320"></canvas>
-        </div>
-        <div class="chart-card full-width">
-          <h3>Cumulative alternation errors</h3>
-          <canvas id="liveErrorChart" width="900" height="320"></canvas>
-        </div>
-      </div>
-    </section>
-
-    <section class="card results-card hidden" id="resultsCard">
-      <div class="section-head">
-        <h2>Final results</h2>
-        <div class="actions">
-          <button id="copyResultsBtn" class="button" type="button">Copy results</button>
-          <button id="exportPdfBtn" class="button" type="button">Export results as PDF</button>
-          <button id="exportCsvBtn" class="button" type="button">Export data as CSV</button>
-          <a id="emailResultsBtn" class="button" href="#">Open email draft</a>
-        </div>
-      </div>
-      <div id="interpretationPanel" class="interpretation-panel"></div>
-      <div id="resultsSummary" class="results-summary empty">Run the test to populate results.</div>
-      <textarea id="resultsExport" class="results-export" readonly placeholder="Copiable results will appear here."></textarea>
-    </section>
-
-    <section id="stageResults"></section>
-  </main>
-
-  <script src="assets/app.js"></script>
+  </div>
+  <script src="assets/site.js"></script>
+  <script>
+    window.IM_NOTES.initLanding({ gateHash: 'b1f4ce3ef58108f89eb51ffa4e738fedeea4df3edb1e6aa3ce4b995681a5c203', destination: 'home.html' });
+  </script>
 </body>
 </html>
