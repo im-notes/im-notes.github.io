@@ -1,7 +1,14 @@
 const WINDOW_MS = 500;
 const VAR_WINDOW = 6;
 const PRE_STAGE_COUNTDOWN = 10;
+const KEY_HOLD_THRESHOLD_MS = 17;
 const EMAIL_TO = 'w.liu@neura.edu.au';
+
+const KEY_POSITIONS = {
+  "q": [0,0], "w": [1,0], "e": [2,0], "r": [3,0], "t": [4,0], "y": [5,0], "u": [6,0], "i": [7,0], "o": [8,0], "p": [9,0],
+  "a": [0.4,1], "s": [1.4,1], "d": [2.4,1], "f": [3.4,1], "g": [4.4,1], "h": [5.4,1], "j": [6.4,1], "k": [7.4,1], "l": [8.4,1], ";": [9.4,1], "'": [10.4,1],
+  "z": [0.9,2], "x": [1.9,2], "c": [2.9,2], "v": [3.9,2], "b": [4.9,2], "n": [5.9,2], "m": [6.9,2], ",": [7.9,2], ".": [8.9,2], "/": [9.9,2]
+};
 
 const STAGES = [
   {
@@ -232,10 +239,13 @@ function startStage(index) {
     errors: 0,
     currentErrorCount: 0,
     totalTaps: 0,
+    totalKeyDownDuration: 0,
+    activeKeyDowns: {},
+    weightedErrorDistance: 0,
     series: [],
     handStats: {
-      left: { taps: [], intervals: [], lastTapAt: null },
-      right: { taps: [], intervals: [], lastTapAt: null },
+      left: { taps: [], intervals: [], lastTapAt: null, totalKeyDownDuration: 0, activeKeyDowns: {} },
+      right: { taps: [], intervals: [], lastTapAt: null, totalKeyDownDuration: 0, activeKeyDowns: {} },
     },
     lastAcceptedTapAt: null,
     lastKey: null,
@@ -300,24 +310,64 @@ function sampleSeries(now) {
 }
 
 function handleKeydown(event) {
-  if (!appState?.running || appState.stageIndex < 0) return;
+  if (!appState?.running || appState.stageIndex < 0 || !appState.stageData) return;
   const stage = STAGES[appState.stageIndex];
   const key = normaliseKey(event.key);
-  if (!stage.keys.includes(key)) return;
-  event.preventDefault();
+  if (!key || key.length !== 1) return;
+
   const now = performance.now();
   const stageData = appState.stageData;
-  els.lastKey.textContent = displayKey(key);
+  const expectedKey = stage.keys[appState.expectedIndex];
+  const isTargetKey = stage.keys.includes(key);
 
-  // Allow either valid key to start the alternating sequence.
-  if (stageData.totalTaps === 0) {
-    appState.expectedIndex = stage.keys.indexOf(key);
+  // Ignore OS/browser key-repeat while a key is still physically held.
+  if (event.repeat || key in stageData.activeKeyDowns) {
+    if (isTargetKey) event.preventDefault();
+    return;
   }
 
-  const expectedKey = stage.keys[appState.expectedIndex];
-  if (key !== expectedKey) {
+  els.lastKey.textContent = displayKey(key);
+
+  // Record weighted dysmetria for wrong keys without breaking valid tap handling.
+  if (!isTargetKey) {
     stageData.errors += 1;
     stageData.currentErrorCount += 1;
+    stageData.weightedErrorDistance += weightedKeyDistance(key, expectedKey);
+    els.errorCount.textContent = String(stageData.currentErrorCount);
+    return;
+  }
+
+  event.preventDefault();
+
+  if (!(key in stageData.activeKeyDowns)) {
+    stageData.activeKeyDowns[key] = now;
+  }
+  const hand = stage.hands.left.includes(key) ? 'left' : stage.hands.right.includes(key) ? 'right' : null;
+  if (hand && !(key in stageData.handStats[hand].activeKeyDowns)) {
+    stageData.handStats[hand].activeKeyDowns[key] = now;
+  }
+
+  // First valid target key always starts the stage.
+  if (stageData.totalTaps === 0) {
+    stageData.lastAcceptedTapAt = now;
+    stageData.lastKey = key;
+    stageData.totalTaps = 1;
+    stageData.taps.push({ ts: now, key });
+    if (hand) {
+      const handStats = stageData.handStats[hand];
+      handStats.lastTapAt = now;
+      handStats.taps.push({ ts: now, key });
+    }
+    appState.expectedIndex = stage.keys.indexOf(key) === 0 ? 1 : 0;
+    updateStaticUI();
+    return;
+  }
+
+  const currentExpected = stage.keys[appState.expectedIndex];
+  if (key !== currentExpected) {
+    stageData.errors += 1;
+    stageData.currentErrorCount += 1;
+    stageData.weightedErrorDistance += weightedKeyDistance(key, currentExpected);
     els.errorCount.textContent = String(stageData.currentErrorCount);
     return;
   }
@@ -328,7 +378,6 @@ function handleKeydown(event) {
   stageData.totalTaps += 1;
   stageData.taps.push({ ts: now, key });
 
-  const hand = stage.hands.left.includes(key) ? 'left' : stage.hands.right.includes(key) ? 'right' : null;
   if (hand) {
     const handStats = stageData.handStats[hand];
     if (handStats.lastTapAt != null) handStats.intervals.push(now - handStats.lastTapAt);
@@ -338,6 +387,32 @@ function handleKeydown(event) {
 
   appState.expectedIndex = appState.expectedIndex === 0 ? 1 : 0;
   updateStaticUI();
+}
+
+function handleKeyup(event) {
+  if (!appState?.running || appState.stageIndex < 0 || !appState.stageData) return;
+  const stage = STAGES[appState.stageIndex];
+  const key = normaliseKey(event.key);
+  if (!key || key.length !== 1) return;
+
+  const now = performance.now();
+  const stageData = appState.stageData;
+
+  if (key in stageData.activeKeyDowns) {
+    const held = Math.max(0, now - stageData.activeKeyDowns[key]);
+    if (held >= KEY_HOLD_THRESHOLD_MS) stageData.totalKeyDownDuration += held;
+    delete stageData.activeKeyDowns[key];
+  }
+
+  const hand = stage.hands.left.includes(key) ? 'left' : stage.hands.right.includes(key) ? 'right' : null;
+  if (hand) {
+    const handStats = stageData.handStats[hand];
+    if (key in handStats.activeKeyDowns) {
+      const held = Math.max(0, now - handStats.activeKeyDowns[key]);
+      if (held >= KEY_HOLD_THRESHOLD_MS) handStats.totalKeyDownDuration += held;
+      delete handStats.activeKeyDowns[key];
+    }
+  }
 }
 
 function completeStage() {
@@ -357,6 +432,18 @@ function completeStage() {
   const rightVariability = stageData.handStats.right.intervals.length >= 2 ? stdDev(stageData.handStats.right.intervals) : 0;
   const leftSpeed = stageData.handStats.left.taps.length / durationSec;
   const rightSpeed = stageData.handStats.right.taps.length / durationSec;
+  const dysmetriaScore = totalTaps > 0 ? stageData.errors / totalTaps : stageData.errors;
+  const kinesiaScore = (totalTaps / durationSec) * 60;
+  const akinesiaTime = stageData.totalKeyDownDuration;
+  const arrhythmiaScore = stageData.intervals.length >= 2 ? variance(stageData.intervals) : 0;
+  const leftKinesiaScore = stageData.handStats.left.taps.length * (60 / durationSec);
+  const rightKinesiaScore = stageData.handStats.right.taps.length * (60 / durationSec);
+  const leftAkinesiaTime = stageData.handStats.left.totalKeyDownDuration;
+  const rightAkinesiaTime = stageData.handStats.right.totalKeyDownDuration;
+  const leftArrhythmiaScore = stageData.handStats.left.intervals.length >= 2 ? variance(stageData.handStats.left.intervals) : 0;
+  const rightArrhythmiaScore = stageData.handStats.right.intervals.length >= 2 ? variance(stageData.handStats.right.intervals) : 0;
+  const leftDysmetriaScore = leftKinesiaScore > 0 ? (stageData.weightedErrorDistance / 2) / leftKinesiaScore : 0;
+  const rightDysmetriaScore = rightKinesiaScore > 0 ? (stageData.weightedErrorDistance / 2) / rightKinesiaScore : 0;
   appState.results.push({
     id: stage.id,
     title: stage.title,
@@ -375,6 +462,18 @@ function completeStage() {
     rightVariability,
     leftSpeed,
     rightSpeed,
+    kinesiaScore,
+    akinesiaTime,
+    dysmetriaScore,
+    arrhythmiaScore,
+    leftKinesiaScore,
+    rightKinesiaScore,
+    leftAkinesiaTime,
+    rightAkinesiaTime,
+    leftDysmetriaScore,
+    rightDysmetriaScore,
+    leftArrhythmiaScore,
+    rightArrhythmiaScore,
     series: stageData.series
   });
   appState.stageData = null;
@@ -428,6 +527,10 @@ function buildResultsUI() {
           <div class="metric"><span class="metric-label">Mean speed</span><div class="metric-value">${safeNum(result.overallSpeed).toFixed(2)} /s</div></div>
           <div class="metric"><span class="metric-label">Variability</span><div class="metric-value">${safeNum(result.variability).toFixed(1)} ms</div></div>
           <div class="metric"><span class="metric-label">Alternation errors</span><div class="metric-value">${safeNum(result.totalErrors)}</div></div>
+          <div class="metric"><span class="metric-label">Kinesia score</span><div class="metric-value">${safeNum(result.kinesiaScore).toFixed(1)}</div></div>
+          <div class="metric"><span class="metric-label">Akinesia time (ms)</span><div class="metric-value">${safeNum(result.akinesiaTime).toFixed(0)}</div></div>
+          <div class="metric"><span class="metric-label">Dysmetria score</span><div class="metric-value">${safeNum(result.dysmetriaScore).toFixed(3)}</div></div>
+          <div class="metric"><span class="metric-label">Arrhythmia score</span><div class="metric-value">${safeNum(result.arrhythmiaScore).toFixed(1)}</div></div>
         </div>
         <div class="chart-grid chart-grid-three">
           <div class="chart-card"><h3>Speed over stage</h3><canvas width="700" height="250" data-chart="speed"></canvas></div>
@@ -648,6 +751,7 @@ function normaliseKey(key) { return (key || '').toLowerCase(); }
 function displayKey(key) { return key === "'" ? "'" : key.toUpperCase(); }
 function average(values) { return values.reduce((sum, value) => sum + value, 0) / values.length; }
 function stdDev(values) { const mean = average(values); return Math.sqrt(average(values.map(v => (v - mean) ** 2))); }
+function variance(values) { const mean = average(values); return average(values.map(v => (v - mean) ** 2)); }
 function safeNum(value, fallback = 0) { return Number.isFinite(Number(value)) ? Number(value) : fallback; }
 function percentDifference(a, b) {
   const left = safeNum(a);
@@ -698,6 +802,15 @@ function drawLineChart(canvas, points, options = {}) {
 
 function niceMax(value) { if (value <= 1) return 1; const exponent = Math.floor(Math.log10(value)); const fraction = value / 10 ** exponent; const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10; return niceFraction * 10 ** exponent; }
 function escapeHtml(value) { return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;'); }
+function weightedKeyDistance(actual, target) {
+  const a = KEY_POSITIONS[actual];
+  const t = KEY_POSITIONS[target];
+  if (!a || !t) return 3;
+  const distance = Math.hypot(a[0] - t[0], a[1] - t[1]);
+  if (distance <= 1.25) return 1;
+  if (distance <= 2.25) return 2;
+  return 3;
+}
 function csvEscape(value) { const s = String(value ?? ''); return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s; }
 function slugify(value) { return String(value).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'results'; }
 function downloadFile(content, filename, mimeType) { const blob = new Blob([content], { type: mimeType }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
@@ -708,9 +821,11 @@ els.resetBtn.addEventListener('click', () => { els.participantForm.reset(); rese
 els.copyResultsBtn.addEventListener('click', async () => {
   if (!els.resultsExport.value) return;
   await navigator.clipboard.writeText(els.resultsExport.value);
-  els.copyResultsBtn.textContent = 'Copied'; setTimeout(() => els.copyResultsBtn.textContent = 'Copy results', 1200);
+  els.copyResultsBtn.textContent = 'Copied';
+  setTimeout(() => { els.copyResultsBtn.textContent = 'Copy results'; }, 1200);
 });
 els.exportPdfBtn.addEventListener('click', exportResultsPdf);
 els.exportCsvBtn.addEventListener('click', exportDataCsv);
 window.addEventListener('keydown', handleKeydown);
+window.addEventListener('keyup', handleKeyup);
 resetState();
